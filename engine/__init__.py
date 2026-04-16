@@ -9,7 +9,7 @@ from .actions  import Boot, TextPage, LLMTerminal, CallbackAction
 from .menu     import Menu, Choice, MenuExit
 from .state    import SessionState
 from .terminal import MinitelTerminal, DebugTerminal
-from .audio    import play_once, play_async, LoopPlayer
+from .audio    import play_once, play_async, LoopPlayer, Sound
 
 __all__ = [
     "Campaign",
@@ -26,4 +26,5 @@ __all__ = [
     "play_once",
     "play_async",
     "LoopPlayer",
+    "Sound",
 ]

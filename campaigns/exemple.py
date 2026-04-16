@@ -18,7 +18,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 from engine import (
-    Campaign, Boot, Menu, TextPage, LLMTerminal, CallbackAction, MenuExit
+    Campaign, Boot, Menu, TextPage, LLMTerminal, CallbackAction, MenuExit, Sound
 )
 
 # ---------------------------------------------------------------------------
@@ -40,13 +40,14 @@ def sound(name: str) -> str:
 # ---------------------------------------------------------------------------
 apollo = LLMTerminal(
     name         = "A.P.O.L.L.O",
-    header       = "SEEGSON BIOS 5.3.09.63 — APOLLO INTERFACE",
+    header       = "#  -  A.P.O.L.L.O -                       CENTRAL ARTIFICIAL INTELLIGENCE",
+    input_prompt = "ENTER QUERY",
     prompt_file  = asset("prompt_apollo.txt"),
     provider     = "openai",
     model        = "gpt-5-mini",
     sounds       = {
-        "typing":   asset("typing_long.wav"),
-        "thinking": asset("rattle.wav"),
+        "typing":   Sound(sound("typing_long.wav"), volume=0.4),
+        "thinking": Sound(sound("rattle.wav"), volume=0.4),
     },
     # Séquence de boot APOLLO
     boot_prompt  = "INITIALISER A.P.O.L.L.O ? (Y/N) : ",
@@ -200,10 +201,10 @@ boot = Boot(
     logo                  = asset("logo.txt"),          # affiché quelques secondes après
     logo_display_duration = 5.0,                        # secondes
     scroll_text           = asset("boot.txt"),          # défile après confirmation
-    boot_sound       = sound("exemple.wav"),
+    boot_sound       = Sound(sound("exemple.wav"), volume=1),
     beep_sound       = sound("beep.wav"),
-    typing_sound     = sound("typing_long.wav"),
-    loading_sound    = sound("subtle_long_type.wav"),
+    typing_sound     = Sound(sound("typing_long.wav"), volume=0.3),
+    loading_sound    = Sound(sound("subtle_long_type.wav"), volume=0.3),
     final_sound      = sound("horn.wav"),
     loading_duration = 2,
     scroll_delay     = 0.10,
@@ -244,7 +245,7 @@ def main():
         loop_on_exit = True,
         debug        = args.debug,
     )
-    campaign.boot = boot
+    #campaign.boot = boot
     campaign.menu = main_menu
     campaign.run()
 

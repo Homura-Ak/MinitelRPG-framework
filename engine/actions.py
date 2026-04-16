@@ -80,10 +80,6 @@ class Boot:
         self.prompt                = prompt
 
     def run(self, term: MinitelTerminal, state: "SessionState") -> bool:
-        """
-        Lance la séquence. Retourne True si l'utilisateur confirme (Y),
-        False sinon (la campagne peut décider quoi faire).
-        """
         term.clear()
         self._show_art(term)
         play_async(self.boot_sound)
@@ -100,11 +96,11 @@ class Boot:
         term.clear()
         play_once(self.beep_sound)
 
-        # 1. Affichage du logo quelques secondes (ex: logo.txt)
+        # 1. Affichage du logo quelques secondes
         if self.logo:
             self._show_logo(term)
 
-        # 2. Défilement du scroll_text (ex: boot.txt)
+        # 2. Défilement du scroll_text
         if self.scroll_text:
             self._scroll_file(term, self.scroll_text)
 
@@ -249,19 +245,19 @@ class LLMTerminal:
         self,
         name:             str,
         header:           str         = None,
-        prompt:           str         = None,   # texte direct
-        prompt_file:      str         = None,   # ou fichier
+        prompt:           str         = None,
+        prompt_file:      str         = None,
         provider:         str         = "openai",
         model:            str         = "gpt-4o-mini",
         api_key:          str         = None,
-        base_url:         str         = None,   # pour Ollama
+        base_url:         str         = None,
         sounds:           dict        = None,
         exit_command:     str         = "/exit",
-        # --- Séquence de boot propre au terminal ---
-        boot_prompt:      str         = None,   # ex: "INITIALISER A.P.O.L.L.O ? (Y/N) : "
-        boot_logo:        str         = None,   # fichier texte qui défile
-        boot_sound:       str         = None,   # son pendant le défilement du logo
-        boot_confirm:     str         = "Y",    # touche de confirmation
+        boot_prompt:      str         = None,
+        boot_logo:        str         = None,
+        boot_sound:       str         = None,
+        boot_confirm:     str         = "Y",
+        input_prompt:     str         = None,
     ):
         self.name         = name
         self.header       = header or name
@@ -271,8 +267,8 @@ class LLMTerminal:
         self.boot_logo    = boot_logo
         self.boot_sound   = boot_sound
         self.boot_confirm = boot_confirm.upper()
+        self.input_prompt = input_prompt or f"[{self.name}]> "
 
-        # Charger le system prompt
         if prompt_file and os.path.isfile(prompt_file):
             with open(prompt_file, "r", encoding="utf-8") as f:
                 system_prompt = f.read()
@@ -289,7 +285,7 @@ class LLMTerminal:
             api_key       = api_key,
             base_url      = base_url,
         )
-        self._llm = None  # créé au premier run()
+        self._llm = None
 
     def _get_llm(self):
         if self._llm is None:
@@ -305,7 +301,7 @@ class LLMTerminal:
             term.send(self.boot_prompt)
             ans = term.read_line(echo=True, maxlen=3).strip().upper()
             if ans != self.boot_confirm:
-                return  # L'utilisateur refuse → retour au menu parent
+                return
 
         if self.boot_logo and os.path.isfile(self.boot_logo):
             self._scroll_boot_logo(term)
@@ -321,15 +317,19 @@ class LLMTerminal:
             if user_input.strip().lower() == self.exit_command.lower():
                 break
 
+            # Afficher [YOU] et [NOM] avant la réponse
+            start_row = self._display_exchange(term, user_input)
+
             # Afficher "..." et jouer le son en boucle pendant l'attente
-            term.at(LINES - 1, 1, "...")
+            #term.at(LINES - 1, 1, ". . .")
+            term.at(start_row, 1, "THINKING")
             with LoopPlayer(self.sounds.get("thinking")) if self.sounds.get("thinking") else _NullCtx():
                 try:
                     response = self._get_llm().ask(user_input, state)
                 except Exception as e:
                     response = f"[SYSTEM ERROR: {e}]"
 
-            self._display_response(term, response)
+            self._display_response(term, response, start_row)
             self._render_input_prompt(term, "")
 
     def _scroll_boot_logo(self, term: MinitelTerminal):
@@ -365,62 +365,73 @@ class LLMTerminal:
             term.send(init)
         term.clear()
 
-        # Ligne 1 : titre en vidéo inverse
         title = f"# - {self.header} "
         col   = max(2, (COLS - len(title)) // 2 + 1)
         with LoopPlayer(self.sounds.get("typing")) if self.sounds.get("typing") else _NullCtx():
             term.at(1, col, title, reverse=True)
 
-        # Ligne 2 : séparateur
-        term.at(2, 4, "=" * (COLS - 8), reverse=True)
-
-        # Ligne 3 : sous-titre
+        term.at(2, 2, ("=" * 24).ljust(COLS - 1), reverse=True)
+        term.send(term.seq_rmso())
+        term.send(" ")
         term.at(3, 2, "_" * (COLS - 2))
-
-        # Ligne LINES : prompt de saisie
-        term.at(LINES, 1, f"[{self.name}]> ")
+        term.at(LINES, 1, f"[{self.input_prompt}]> ")
 
     def _render_input_prompt(self, term: MinitelTerminal, value: str):
         term.send(term.seq_cup(LINES, 1))
         term.send(term.seq_el())
-        term.send(f"[{self.name}]> {value}")
+        term.send(f"[{self.input_prompt}]> {value}")
 
     def _read_input(self, term: MinitelTerminal) -> str:
-        prompt_len = len(f"[{self.name}]> ")
+        prompt_len = len(f"[{self.input_prompt}]> ")
         return term.read_line(echo=True, maxlen=COLS - prompt_len)
 
-    def _display_response(self, term: MinitelTerminal, text: str):
-        """Affiche la réponse dans la zone 4→LINES-2, avec défilement."""
-        top, bottom = 4, LINES - 2
-        window = bottom - top + 1
+    def _display_exchange(self, term: MinitelTerminal, user_input: str) -> int:
+        # Affiche [YOU] + question + [NOM], retourne la ligne courante apres
+        top = 4
+        term.clear_window(top, LINES - 2)
+        term.send(term.seq_cup(top, 1))
+        term.send(term.seq_nel())
+        #term.send(term.seq_smso()) #Début du fond blanc
+        term.send("[YOU] "[:COLS])
+        #term.send(term.seq_rmso()) #Fin du fond blanc
+        #term.send(term.seq_nel())
+        you_line = MinitelTerminal.safe_line(user_input)[:COLS]
+        term.send(you_line)
+        #term.send(term.seq_nel())
+        #term.send(term.seq_nel())
+        #term.send(term.seq_smso())
+        #term.send(f"[{self.name}]"[:COLS])
+        #term.send(term.seq_rmso())
+        #term.send(term.seq_nel())
+        return top + 3  # [YOU] + question + vide + [NOM]
+
+    def _display_response(self, term: MinitelTerminal, text: str, start_row: int = 4):
+        # Affiche la réponse a partir de start_row jusqu'a LINES-2
+        bottom = LINES - 2
+        window = bottom - start_row + 1
 
         lines = []
         for raw in text.splitlines():
-            # Word-wrap à COLS
             raw = MinitelTerminal.safe_line(raw)
             while len(raw) > COLS:
                 lines.append(raw[:COLS])
                 raw = raw[COLS:]
             lines.append(raw)
 
-        term.clear_window(top, bottom)
-        term.send(term.seq_cup(top, 1))
-
+        term.send(term.seq_cup(start_row, 1))  # repositionner le curseur
         with LoopPlayer(self.sounds.get("typing")) if self.sounds.get("typing") else _NullCtx():
-            for i, ln in enumerate(lines[:window]):
+            for ln in lines[:window]:
                 term.send(ln)
                 term.send(term.seq_nel())
                 time.sleep(0.02)
 
-        # S'il y a plus de lignes que la fenêtre, pagination
         if len(lines) > window:
             term.at(LINES - 1, 1, "[SUITE. ENTREE pour continuer]")
             term.wait_enter()
-            # Afficher le reste
             rest = lines[window:]
-            term.clear_window(top, bottom)
-            term.send(term.seq_cup(top, 1))
-            for ln in rest[:window]:
+            term.clear_window(4, bottom)
+            term.send(term.seq_cup(4, 1))
+            for ln in rest[:bottom - 4 + 1]:
                 term.send(ln)
                 term.send(term.seq_nel())
 
