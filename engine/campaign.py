@@ -43,12 +43,14 @@ class Campaign:
         termname:     str  = None,
         save_file:    str  = None,
         loop_on_exit: bool = True,
+        debug:        bool = False,
     ):
         self.device       = device
         self.baud         = baud
         self.termname     = termname
         self.save_file    = save_file
         self.loop_on_exit = loop_on_exit
+        self.debug        = debug
 
         self.boot: "Boot | None" = None
         self.menu: "Menu | None" = None
@@ -62,7 +64,11 @@ class Campaign:
 
     def run(self):
         """Lance la campagne. Bloquant jusqu'à KeyboardInterrupt."""
-        self._term  = MinitelTerminal(self.device, self.baud, self.termname)
+        if self.debug:
+            from .terminal import DebugTerminal
+            self._term = DebugTerminal(self.termname)
+        else:
+            self._term = MinitelTerminal(self.device, self.baud, self.termname)
         self._state = SessionState(self.save_file)
 
         self._term.open()

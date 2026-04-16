@@ -26,9 +26,13 @@ from engine import (
 # ---------------------------------------------------------------------------
 HERE   = os.path.dirname(os.path.abspath(__file__))
 ASSETS = os.path.join(os.path.dirname(HERE), "assets", "exemple")
+SOUNDS = os.path.join(ASSETS, "sounds")
 
 def asset(name: str) -> str:
     return os.path.join(ASSETS, name)
+
+def sound(name: str) -> str:
+    return os.path.join(SOUNDS, name)
 
 
 # ---------------------------------------------------------------------------
@@ -47,7 +51,7 @@ apollo = LLMTerminal(
     # Séquence de boot APOLLO
     boot_prompt  = "INITIALISER A.P.O.L.L.O ? (Y/N) : ",
     boot_logo    = asset("logo-seegson.txt"),   # ou logo.txt
-    boot_sound   = asset("typing_long.wav"),
+    boot_sound   = sound("typing_long.wav"),
     exit_command = "/exit",
 )
 
@@ -61,8 +65,8 @@ muthur = LLMTerminal(
     provider    = "anthropic",             # utilise l'API Anthropic
     model       = "claude-opus-4-5",
     sounds      = {
-        "typing":   asset("typing_long.wav"),
-        "thinking": asset("rattle.wav"),
+        "typing":   sound("typing_long.wav"),
+        "thinking": sound("rattle.wav"),
     },
     exit_command = "/exit",
 )
@@ -74,7 +78,7 @@ muthur = LLMTerminal(
 containment_menu = Menu(
     header       = "CONTAINMENT PROTOCOL",
     subheader    = "EMERGENCY PROCEDURES",
-    typing_sound = asset("typing_long.wav"),
+    typing_sound = sound("typing_long.wav"),
 )
 
 containment_menu.add_choice(
@@ -108,18 +112,18 @@ containment_menu.add_choice(
 main_menu = Menu(
     header       = "SEEGSON BIOS 5.3.09.63",
     subheader    = "APOLLO STATION — HADLEY'S HOPE",
-    typing_sound = asset("typing_long.wav"),
+    typing_sound = sound("typing_long.wav"),
     footer       = "[ENTER QUERY]",
 )
 
 # --- Choix toujours visibles ---
 main_menu.add_choice("1", "A.P.O.L.L.O",    action=apollo)
 main_menu.add_choice("2", "POWER STATUS",    action=TextPage(asset("2.txt"),
-                                                typing_sound=asset("typing_long.wav")))
+                                                typing_sound=sound("typing_long.wav")))
 main_menu.add_choice("3", "HVAC",            action=TextPage(asset("3.txt"),
-                                                typing_sound=asset("typing_long.wav")))
+                                                typing_sound=sound("typing_long.wav")))
 main_menu.add_choice("4", "LIGHTING",        action=TextPage(asset("4.txt"),
-                                                typing_sound=asset("typing_long.wav")))
+                                                typing_sound=sound("typing_long.wav")))
 
 # --- Choix conditionnel : MUTHUR uniquement si débloqué ---
 main_menu.add_choice(
@@ -133,7 +137,7 @@ main_menu.add_choice(
     "5", "CONTAINMENT PROTOCOL [ACTIVE]",
     action    = containment_menu,
     condition = lambda state: state.get("contamination", False),
-    sounds    = {"select": asset("horn.wav")},
+    sounds    = {"select": sound("horn.wav")},
 )
 
 # --- Action qui déclenche la contamination (pour les tests / le MJ) ---
@@ -168,7 +172,7 @@ main_menu.add_choice(
 main_menu.on_state(
     "contamination",
     value        = True,
-    sound        = asset("horn.wav"),
+    sound        = sound("horn.wav"),
     message_file = asset("contamination_alert.txt"),
 )
 
@@ -176,7 +180,7 @@ main_menu.on_state(
 main_menu.on_state(
     "contamination",
     value   = False,
-    sound   = asset("beep.wav"),
+    sound   = sound("beep.wav"),
     message = "Contamination neutralisée. Retour à la normale.",
 )
 
@@ -196,11 +200,11 @@ boot = Boot(
     logo                  = asset("logo.txt"),          # affiché quelques secondes après
     logo_display_duration = 5.0,                        # secondes
     scroll_text           = asset("boot.txt"),          # défile après confirmation
-    boot_sound       = asset("boot.wav"),
-    beep_sound       = asset("beep.wav"),
-    typing_sound     = asset("typing_long.wav"),
-    loading_sound    = asset("subtle_long_type.wav"),
-    final_sound      = asset("horn.wav"),
+    boot_sound       = sound("exemple.wav"),
+    beep_sound       = sound("beep.wav"),
+    typing_sound     = sound("typing_long.wav"),
+    loading_sound    = sound("subtle_long_type.wav"),
+    final_sound      = sound("horn.wav"),
     loading_duration = 2,
     scroll_delay     = 0.10,
     prompt           = "               BOOT ? (Y/N) : ",
@@ -221,6 +225,8 @@ def main():
                         help="Désactiver la persistance entre sessions")
     parser.add_argument("--reset",     action="store_true",
                         help="Effacer la sauvegarde et repartir de zéro")
+    parser.add_argument("--debug",     action="store_true",   # ← ajouter
+                    help="Mode debug : terminal Linux, sans Minitel")
     args = parser.parse_args()
 
     save_file = None if args.no_save else args.save
@@ -236,6 +242,7 @@ def main():
         termname     = args.term,
         save_file    = save_file,
         loop_on_exit = True,
+        debug        = args.debug,
     )
     campaign.boot = boot
     campaign.menu = main_menu

@@ -230,3 +230,80 @@ class MinitelTerminal:
     def safe_line(s: str) -> str:
         s = s.translate(MinitelTerminal.TRANS)
         return s.encode("latin-1", "ignore").decode("latin-1", "ignore")
+
+
+# ---------------------------------------------------------------------------
+# Mode debug : terminal Linux au lieu du port série
+# ---------------------------------------------------------------------------
+
+class DebugTerminal(MinitelTerminal):
+    """
+    Remplace le port série par stdin/stdout.
+    Les séquences ANSI sont envoyées directement au terminal Linux.
+    Utilisé avec --debug pour tester sans Minitel.
+    """
+
+    def __init__(self, termname: str = None):
+        # Pas d'appel à super().__init__() avec serial
+        self.device   = "debug"
+        self.baud     = 0
+        self.termname = termname or os.environ.get("TERM", "xterm-256color")
+        self._ser     = None
+        self._stdin_fd = None
+
+    def open(self):
+        import sys, tty, termios
+        self._stdin_fd = sys.stdin.fileno()
+        self._old_settings = termios.tcgetattr(self._stdin_fd)
+        tty.setraw(self._stdin_fd)
+
+    def close(self):
+        import sys, termios
+        if self._old_settings and self._stdin_fd is not None:
+            termios.tcsetattr(self._stdin_fd, termios.TCSADRAIN, self._old_settings)
+        # Remettre le curseur et le terminal propre
+        sys.stdout.write("\x1b[?25h\x1b[0m\n")
+        sys.stdout.flush()
+
+    def release(self):
+        pass
+
+    def reclaim(self):
+        pass
+
+    def send(self, data):
+        import sys
+        if isinstance(data, str):
+            data = data.encode("utf-8", errors="ignore")
+        else:
+            # Convertir latin-1 → utf-8 pour affichage correct dans le terminal
+            try:
+                data = data.decode("latin-1").encode("utf-8")
+            except Exception:
+                pass
+        sys.stdout.buffer.write(data)
+        sys.stdout.buffer.flush()
+
+    def read(self, n=1) -> bytes:
+        import sys
+        return sys.stdin.buffer.read(n)
+
+    # Les séquences utilisent le terminal courant (xterm/etc) via fallback ANSI
+    def _seq(self, cap, *args, fallback=b""):
+        # En mode debug on utilise directement les fallback ANSI
+        # car le terminal Linux les supporte nativement
+        fallbacks = {
+            "clear":  b"\x1b[2J\x1b[H",
+            "el":     b"\x1b[K",
+            "dl1":    b"\x1b[M",
+            "smso":   b"\x1b[7m",
+            "rmso":   b"\x1b[27m",
+            "civis":  b"\x1b[?25l",
+            "cnorm":  b"\x1b[?25h",
+            "nel":    b"\r\n",
+            "is2":    b"",
+        }
+        if cap == "cup" and len(args) >= 2:
+            r, c = int(args[0]) + 1, int(args[1]) + 1
+            return f"\x1b[{r};{c}H".encode()
+        return fallbacks.get(cap, fallback)
