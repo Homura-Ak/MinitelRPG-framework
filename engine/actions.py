@@ -112,11 +112,12 @@ class Boot:
     def _show_art(self, term: MinitelTerminal):
         if not self.art or not os.path.isfile(self.art):
             return
-        lines = _read_lines(self.art)
+        with open(self.art, 'rb') as f:
+            lines = f.read().split(b'\n')
         for r, ln in enumerate(lines[: LINES - 1], start=1):
             term.send(term.seq_cup(r, 1))
             term.send(term.seq_el())
-            term.send(MinitelTerminal.safe_line(ln)[: COLS])
+            term.send(ln)  # envoie les bytes bruts incluant les séquences ESC
 
     def _scroll_file(self, term: MinitelTerminal, path: str):
         """Fait défiler un fichier texte ligne par ligne."""

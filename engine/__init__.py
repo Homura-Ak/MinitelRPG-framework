@@ -7,6 +7,7 @@ Exports publics du framework.
 from .campaign import Campaign
 from .actions  import Boot, TextPage, LLMTerminal, CallbackAction
 from .menu     import Menu, Choice, MenuExit
+from .menusplit import SplitMenu, SplitItem, AudioItem
 from .state    import SessionState
 from .terminal import MinitelTerminal, DebugTerminal
 from .audio    import play_once, play_async, LoopPlayer, Sound
@@ -20,6 +21,8 @@ __all__ = [
     "Menu",
     "Choice",
     "MenuExit",
+    "SplitMenu",
+    "SplitItem",
     "SessionState",
     "MinitelTerminal",
     "DebugTerminal",
