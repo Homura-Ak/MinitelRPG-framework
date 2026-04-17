@@ -141,10 +141,10 @@ Le `Menu` affiche des choix numérotés ou par lettres. L'utilisateur tape la to
 ```python
 menu = Menu(
     # Textes d'affichage
-    header       = "SEEGSON BIOS 5.3.09.63",         # titre ligne 1 (vidéo inverse)
-    subheader    = "APOLLO STATION — HADLEY'S HOPE",  # titre ligne 2
-    footer       = "[ENTRER COMMANDE] > ",            # invite de saisie (dernière ligne)
-    header_prefix = "# - ",   # préfixe du header. Mettre "" pour aucun préfixe.
+    header        = "SEEGSON BIOS 5.3.09.63",
+    subheader     = "APOLLO STATION — HADLEY'S HOPE",
+    footer        = "[ENTRER COMMANDE] > ",
+    header_prefix = "# - ",   # mettre "" pour aucun préfixe
 
     # Format des choix
     choice_format  = "{key} - {label}",  # format par défaut
@@ -156,7 +156,7 @@ menu = Menu(
 
     # Son et messages
     typing_sound = Sound("assets/sounds/typing.wav", volume=0.3),
-    unknown_msg  = "[ERREUR] Commande inconnue : {key}",  # message si touche invalide
+    unknown_msg  = "[ERREUR] Commande inconnue : {key}",
 )
 
 # Ajout de choix
@@ -171,25 +171,21 @@ menu.add_choice("Q", "QUITTER",
 
 ### SplitMenu — menu deux colonnes
 
-Le `SplitMenu` affiche une liste à gauche et un panneau de prévisualisation/contenu à droite.
+Le `SplitMenu` affiche une liste à gauche et un panneau de contenu à droite.
 Navigation par flèches directionnelles.
 
 ```python
 terminal = SplitMenu(
-    # Textes d'affichage
     header       = "SEVASTOLINK TERMINAL v2.1",
-    folder_label = "FICHIERS",    # étiquette au-dessus de la liste gauche
+    folder_label = "FICHIERS",
     footer       = None,          # None = construit automatiquement
 
-    # Son
     typing_sound   = Sound("assets/sounds/typing.wav", volume=0.3),
-    response_delay = 0.08,   # pause entre les lignes d'un TextPage ouvert
+    response_delay = 0.08,        # pause entre les lignes d'un TextPage ouvert
 
-    # Touche de sortie
     exit_key = "Q",
 
     # Touches de navigation (par défaut : flèches ANSI)
-    # Vous pouvez remplacer par n'importe quelle séquence bytes :
     # key_up    = b'\x1b[A'   (flèche haut)
     # key_down  = b'\x1b[B'   (flèche bas)
     # key_open  = b'\x1b[C'   (flèche droite — ouvrir)
@@ -255,17 +251,16 @@ apollo = LLMTerminal(
     # Identité de l'IA
     name         = "A.P.O.L.L.O",
     header       = "# - A.P.O.L.L.O - CENTRAL ARTIFICIAL INTELLIGENCE",
-    input_prompt = "ENTER QUERY",   # texte devant la zone de saisie
+    input_prompt = "ENTER QUERY",
 
     # Prompt système
-    prompt_file  = "assets/prompt_apollo.txt",  # fichier texte
-    # ou directement :
-    # prompt = "You are APOLLO, an onboard AI...",
+    prompt_file  = "assets/prompt_apollo.txt",
+    # ou : prompt = "You are APOLLO, an onboard AI...",
 
     # Provider LLM
-    provider = "anthropic",            # "openai" | "anthropic" | "ollama"
+    provider = "anthropic",
     model    = "claude-sonnet-4-6",
-    api_key  = None,                   # None = lue depuis l'environnement
+    api_key  = None,   # None = lue depuis l'environnement
 
     # Sons
     sounds = {
@@ -279,7 +274,7 @@ apollo = LLMTerminal(
     # Vitesse d'affichage des réponses
     response_delay = 0.03,   # pause entre les lignes (défaut 0.02)
 
-    # Séquence de boot optionnelle du terminal LLM
+    # Séquence de boot optionnelle
     boot_prompt       = "INITIALISER A.P.O.L.L.O ? (Y/N) : ",
     boot_confirm      = "Y",
     boot_logo         = "assets/logo-seegson.txt",
@@ -287,9 +282,9 @@ apollo = LLMTerminal(
     boot_scroll_delay = 0.10,
 
     # Labels d'interface
-    label_you      = "[YOU]",          # préfixe des questions utilisateur
-    label_thinking = "PROCESSING...", # texte d'attente pendant le calcul LLM
-    error_prefix   = "[SYSTEM ERROR]", # préfixe des erreurs
+    label_you      = "[YOU]",
+    label_thinking = "PROCESSING...",
+    error_prefix   = "[SYSTEM ERROR]",
 )
 ```
 
@@ -309,16 +304,14 @@ Les commandes sont extraites et appliquées, puis retirées du texte affiché.
 
 ### CallbackAction — action Python libre
 
-Pour n'importe quelle action personnalisée.
-
 ```python
-# Exemple simple (lambda)
+# Exemple simple
 CallbackAction(
     fn    = lambda term, state: state.update({"power_on": True}),
     sound = "assets/sounds/click.wav",   # son joué avant fn (optionnel)
 )
 
-# Exemple avancé (fonction)
+# Exemple avancé
 def activer_urgence(term, state):
     state.update({"urgence": True, "contamination": True})
     term.at(12, 4, ">>> PROTOCOLE D'URGENCE ACTIVE <<<")
@@ -346,7 +339,12 @@ typing_sound = "assets/sounds/typing.wav"
 typing_sound = Sound("assets/sounds/typing.wav", volume=0.4)
 ```
 
-**Types de sons disponibles dans chaque module :**
+**Bip Minitel natif (sans fichier audio) :**
+```python
+term.beep()   # déclenche le bip interne du Minitel (caractère BEL)
+```
+
+**Tableau récapitulatif des sons disponibles :**
 
 | Module | Paramètre son | Moment |
 |--------|--------------|--------|
@@ -365,12 +363,6 @@ typing_sound = Sound("assets/sounds/typing.wav", volume=0.4)
 | `AudioItem` | — | fichier audio joué en lecture |
 | `StateEvent` | `sound` | quand l'événement se déclenche |
 | `CallbackAction` | `sound` | avant d'exécuter la fonction |
-
-**Bip Minitel natif (sans fichier audio) :**
-```python
-# Dans un CallbackAction ou n'importe où avec accès à term :
-term.beep()   # déclenche le bip interne du Minitel (caractère BEL)
-```
 
 ---
 
@@ -412,7 +404,7 @@ menu.add_choice(
     sounds    = {"select": Sound("alarm.wav", volume=0.8)},
 )
 
-# Visible seulement si MU/TH/UR n'est pas encore débloqué
+# Visible seulement si MU/TH/UR n'est pas encore débloquée
 menu.add_choice(
     "U", "DEBLOQUER MU/TH/UR [GM]",
     action    = CallbackAction(lambda t, s: s.update({"muthur_unlocked": True})),
@@ -420,7 +412,7 @@ menu.add_choice(
 )
 ```
 
-M�me chose dans un `SplitMenu` :
+Même chose dans un `SplitMenu` :
 ```python
 terminal.add_item(
     "A.P.O.L.L.O [RESTREINT]",
@@ -433,7 +425,7 @@ terminal.add_item(
 
 ### Événements d'état
 
-Déclenchez des sons ou des messages quand une valeur d'état change :
+Déclenchés automatiquement quand une valeur d'état change, même si c'est le LLM qui l'a modifiée.
 
 ```python
 # Alerte plein écran quand la contamination passe à True
@@ -452,7 +444,7 @@ menu.on_state(
     message = "Contamination neutralisee. Retour a la normale.",
 )
 
-# Callback custom quand MU/TH/UR est débloquée
+# Callback custom
 menu.on_state(
     "muthur_unlocked",
     value    = True,
@@ -574,7 +566,9 @@ campaign = Campaign(
     device    = args.device,
     save_file = "ma_campagne.json",   # None = pas de persistance
 )
+```
 
+```bash
 # Effacer la sauvegarde depuis la ligne de commande :
 python campaigns/ma_campagne.py --reset
 ```
@@ -583,7 +577,6 @@ python campaigns/ma_campagne.py --reset
 
 ## Mode debug
 
-Teste sans Minitel physique :
 ```bash
 python campaigns/exemple.py --debug
 ```
