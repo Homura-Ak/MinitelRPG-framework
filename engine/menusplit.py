@@ -87,6 +87,7 @@ class SplitMenu:
             seq = self._read_key(term)
 
             if seq in (self.exit_key.encode(), b'q', b'Q'):
+                term.send(b'\x07')
                 return
 
             elif seq == SEQ_UP:
@@ -118,6 +119,7 @@ class SplitMenu:
                 term.send(self.footer[:COLS])
 
             elif seq in (b'\r', b'\n'):
+                term.send(b'\x07')
                 item = visible[cursor]
                 from .actions import TextPage, LLMTerminal
                 if isinstance(item.action, TextPage):
@@ -291,12 +293,15 @@ class SplitMenu:
                     self._footer_right(term, self._subfolder_footer(visible, cursor))
 
             elif seq in (b'\r', b'\n'):
+                term.send(b'\x07')
                 from .actions import TextPage, LLMTerminal
                 sub_item = visible[cursor]
                 if isinstance(sub_item.action, AudioItem):
                     self._run_audio_right(term, state, sub_item)
+                    self._render_subfolder_right(term, item.label, visible, cursor)
                 elif isinstance(sub_item.action, TextPage):
                     self._run_text_right(term, state, sub_item)
+                    self._render_subfolder_right(term, item.label, visible, cursor)
                 elif isinstance(sub_item.action, LLMTerminal):
                     self._run_llm_right(term, state, sub_item)
                 else:
@@ -325,7 +330,7 @@ class SplitMenu:
             else:
                 term.send(f"  {label}".ljust(RIGHT_W))
 
-        self._footer_right(term, "[HAUT/BAS] NAVIGUER  [DROITE] OUVRIR  [GAUCHE] RETOUR")
+        self._footer_right(term, "[HAUT/BAS] NAVIGUER  [ENTREE] OUVRIR  [GAUCHE] RETOUR")
 
     def _subfolder_footer(self, visible: list, cursor: int) -> str:
         """Retourne le footer adapté au type de l'item courant."""
