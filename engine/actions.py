@@ -62,7 +62,7 @@ class Boot:
         typing_sound:          str   = None,
         loading_sound:         str   = None,
         final_sound:           str   = None,
-        loading_duration:      int   = 10,
+        loading_duration:      int   = 5,
         scroll_delay:          float = 0.10,
         prompt:                str   = "BOOT ? (Y/N) : ",
     ):
@@ -192,7 +192,7 @@ class TextPage:
     Avec son de frappe et retour au menu parent à la fin.
     """
 
-    def __init__(self, path: str, typing_sound: str = None, scroll_delay: float = 0.02):
+    def __init__(self, path: str, typing_sound: str = None, scroll_delay: float = 0.12):
         self.path         = path
         self.typing_sound = typing_sound
         self.scroll_delay = scroll_delay

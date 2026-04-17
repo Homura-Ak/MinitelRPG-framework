@@ -66,7 +66,7 @@ class SplitMenu:
         self.header       = header
         self.folder_label = folder_label
         self.exit_key     = exit_key.upper()
-        self.footer       = footer or f"[HAUT/BAS] NAVIGUER  [ENTREE] SELECTIONNER  [{exit_key}] QUITTER"
+        self.footer       = footer or f"[HAUT/BAS] NAVIGUER  [DROITE] OUVRIR  [{exit_key}] QUITTER"
         self.typing_sound = typing_sound
         self._items: list[SplitItem] = []
 
@@ -101,21 +101,31 @@ class SplitMenu:
                     self._render_list(term, visible, cursor)
                     self._preview(term, state, visible, cursor)
 
+            elif seq == SEQ_RIGHT:
+                item = visible[cursor]
+                from .actions import TextPage, LLMTerminal
+                if isinstance(item.action, SplitMenu):
+                    self._run_subfolder(term, state, item)
+                elif isinstance(item.action, TextPage):
+                    self._run_text_right(term, state, item)
+                elif isinstance(item.action, LLMTerminal):
+                    self._run_llm_right(term, state, item)
+                elif isinstance(item.action, AudioItem):
+                    self._run_audio_right(term, state, item)
+                # Restaurer le footer principal au retour
+                term.send(term.seq_cup(LINES, 1))
+                term.send(term.seq_el())
+                term.send(self.footer[:COLS])
+
             elif seq in (b'\r', b'\n'):
                 item = visible[cursor]
                 from .actions import TextPage, LLMTerminal
                 if isinstance(item.action, TextPage):
                     self._run_text_right(term, state, item)
-                    self._preview(term, state, visible, cursor)
                 elif isinstance(item.action, LLMTerminal):
                     self._run_llm_right(term, state, item)
-                    self._preview(term, state, visible, cursor)
-                elif isinstance(item.action, SplitMenu):
-                    self._run_subfolder(term, state, item)
-                    self._preview(term, state, visible, cursor)
                 elif isinstance(item.action, AudioItem):
                     self._run_audio_right(term, state, item)
-                    self._preview(term, state, visible, cursor)
                 else:
                     if callable(item.action) and not hasattr(item.action, 'run'):
                         item.action(term, state)
@@ -250,7 +260,15 @@ class SplitMenu:
             return
 
         cursor = 0
-        self._render_subfolder_right(term, item.label, visible, cursor)
+        self._footer_right(term, self._subfolder_footer(visible, cursor))
+        # Surligner le premier item sans tout redessiner
+        if visible:
+            row = CONTENT_TOP + 1
+            label = visible[0].label[:RIGHT_W - 3]
+            term.send(term.seq_cup(row, RIGHT_COL))
+            term.send(term.seq_smso())
+            term.send(f" {label}".ljust(RIGHT_W))
+            term.send(term.seq_rmso())
 
         while True:
             seq = self._read_key(term)
@@ -260,26 +278,27 @@ class SplitMenu:
 
             elif seq == SEQ_UP:
                 if cursor > 0:
+                    old = cursor
                     cursor -= 1
-                    self._render_subfolder_right(term, item.label, visible, cursor)
+                    self._update_subfolder_cursor(term, visible, old, cursor)
+                    self._footer_right(term, self._subfolder_footer(visible, cursor))
 
             elif seq == SEQ_DOWN:
                 if cursor < len(visible) - 1:
+                    old = cursor
                     cursor += 1
-                    self._render_subfolder_right(term, item.label, visible, cursor)
+                    self._update_subfolder_cursor(term, visible, old, cursor)
+                    self._footer_right(term, self._subfolder_footer(visible, cursor))
 
             elif seq in (b'\r', b'\n'):
                 from .actions import TextPage, LLMTerminal
                 sub_item = visible[cursor]
                 if isinstance(sub_item.action, AudioItem):
                     self._run_audio_right(term, state, sub_item)
-                    self._render_subfolder_right(term, item.label, visible, cursor)
                 elif isinstance(sub_item.action, TextPage):
                     self._run_text_right(term, state, sub_item)
-                    self._render_subfolder_right(term, item.label, visible, cursor)
                 elif isinstance(sub_item.action, LLMTerminal):
                     self._run_llm_right(term, state, sub_item)
-                    self._render_subfolder_right(term, item.label, visible, cursor)
                 else:
                     if callable(sub_item.action) and not hasattr(sub_item.action, 'run'):
                         sub_item.action(term, state)
@@ -306,7 +325,33 @@ class SplitMenu:
             else:
                 term.send(f"  {label}".ljust(RIGHT_W))
 
-        self._footer_right(term, "[HAUT/BAS] NAVIGUER  [ENTREE] JOUER  [GAUCHE] RETOUR")
+        self._footer_right(term, "[HAUT/BAS] NAVIGUER  [DROITE] OUVRIR  [GAUCHE] RETOUR")
+
+    def _subfolder_footer(self, visible: list, cursor: int) -> str:
+        """Retourne le footer adapté au type de l'item courant."""
+        from .actions import TextPage, LLMTerminal
+        item = visible[cursor]
+        if isinstance(item.action, AudioItem):
+            return "[HAUT/BAS] NAVIGUER  [ENTREE] JOUER  [GAUCHE] RETOUR"
+        return "[HAUT/BAS] NAVIGUER  [DROITE] OUVRIR  [GAUCHE] RETOUR"
+
+    def _update_subfolder_cursor(self, term: MinitelTerminal, visible: list,
+                                  old: int, new: int):
+        """Redessine uniquement les deux lignes qui changent de curseur (ancienne et nouvelle)."""
+        for i in (old, new):
+            if i < 0 or i >= len(visible):
+                continue
+            row = CONTENT_TOP + 1 + i
+            if row > CONTENT_BOTTOM:
+                continue
+            label = visible[i].label[:RIGHT_W - 3]
+            term.send(term.seq_cup(row, RIGHT_COL))
+            if i == new:
+                term.send(term.seq_smso())
+                term.send(f" {label}".ljust(RIGHT_W))
+                term.send(term.seq_rmso())
+            else:
+                term.send(f"  {label}".ljust(RIGHT_W))
 
     def _run_audio_right(self, term: MinitelTerminal, state: "SessionState", item: SplitItem):
         from .audio import _build_cmd
@@ -374,9 +419,9 @@ class SplitMenu:
             term.send(" " * RIGHT_W)
 
     def _footer_right(self, term: MinitelTerminal, text: str):
-        term.send(term.seq_cup(LINES, RIGHT_COL))
+        term.send(term.seq_cup(LINES, 1))
         term.send(term.seq_el())
-        term.send(text[:RIGHT_W])
+        term.send(text[:COLS])
 
     def _wait_left(self, term: MinitelTerminal):
         while True:
@@ -469,7 +514,7 @@ class SplitMenu:
         term.send("-" * COLS)
 
         term.send(term.seq_cup(LINES, 1))
-        term.send(self.footer[:LEFT_W])
+        term.send(self.footer[:COLS])
 
     def _render_list(self, term: MinitelTerminal, visible: list, cursor: int):
         for i, item in enumerate(visible[:CONTENT_H]):

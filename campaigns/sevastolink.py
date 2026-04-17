@@ -43,12 +43,12 @@ apollo = LLMTerminal(
     name         = "A.P.O.L.L.O",
     header       = "#  -  A.P.O.L.L.O -                       CENTRAL ARTIFICIAL INTELLIGENCE",
     input_prompt = "ENTER QUERY",
-    prompt_file  = asset("prompt_apollo.txt"),
+    prompt_file  = asset("prompt_sevastolink.txt"),
     provider     = "openai",
     model        = "gpt-5-mini",
     sounds       = {
         "typing":   Sound(sound("typing_long.wav"), volume=0.4),
-        "thinking": Sound(sound("rattle.wav"), volume=0.4),
+        "thinking": Sound(sound("thinking.wav"), volume=0.4),
     },
     boot_prompt  = "INITIALISER A.P.O.L.L.O ? (Y/N) : ",
     boot_logo    = asset("logo-seegson.txt"),
@@ -67,7 +67,7 @@ muthur = LLMTerminal(
     model       = "claude-opus-4-5",
     sounds      = {
         "typing":   sound("typing_long.wav"),
-        "thinking": sound("rattle.wav"),
+        "thinking": sound("thinking.wav"),
     },
     exit_command = "/exit",
 )
@@ -116,10 +116,16 @@ personal_terminal = SplitMenu(
     typing_sound = sound("typing_long.wav"),
 )
 
-personal_terminal.add_item("PERSONAL", action=TextPage(asset("personal.txt"),
-                                            typing_sound=sound("typing_long.wav")))
-personal_terminal.add_item("SHARED",   action=TextPage(asset("shared.txt"),
-                                            typing_sound=sound("typing_long.wav")))
+personal_folder = SplitMenu(
+    header       = "PERSONAL TERMINAL",
+    folder_label = "PERSONAL",
+)
+
+personal_folder.add_item("MAIL",
+    action=TextPage(asset("mail.txt"),
+    typing_sound=sound("typing_long.wav")))
+personal_terminal.add_item("PERSONAL", action=personal_folder)
+
 audio_folder = SplitMenu(
     header       = "PERSONAL TERMINAL",
     folder_label = "AUDIO",
@@ -130,8 +136,6 @@ audio_folder.add_item("LOG 02 - VERLAINE",
     action = AudioItem(sound("exemple.wav"), description="Personal log - A. Verlaine"))
 personal_terminal.add_item("AUDIO", action=audio_folder)
 
-personal_terminal.add_item("UTILITY",  action=TextPage(asset("utility.txt"),
-                                            typing_sound=sound("typing_long.wav")))
 personal_terminal.add_item("A.P.O.L.L.O", action=apollo,
     condition = lambda state: state.get("apollo_unlocked", True))
 
@@ -139,79 +143,11 @@ personal_terminal.add_item("A.P.O.L.L.O", action=apollo,
 # ---------------------------------------------------------------------------
 # Menu principal
 # ---------------------------------------------------------------------------
-main_menu = Menu(
-    header       = "SEEGSON BIOS 5.3.09.63",
-    subheader    = "APOLLO STATION — HADLEY'S HOPE",
-    typing_sound = sound("typing_long.wav"),
-    footer       = "[ENTER QUERY]",
-)
 
-main_menu.add_choice("1", "A.P.O.L.L.O",         action=apollo)
-main_menu.add_choice("2", "POWER STATUS",         action=TextPage(asset("2.txt"),
-                                                      typing_sound=sound("typing_long.wav")))
-main_menu.add_choice("3", "HVAC",                 action=TextPage(asset("3.txt"),
-                                                      typing_sound=sound("typing_long.wav")))
-main_menu.add_choice("4", "LIGHTING",             action=TextPage(asset("4.txt"),
-                                                      typing_sound=sound("typing_long.wav")))
-main_menu.add_choice("P", "PERSONAL TERMINAL",    action=personal_terminal)
-
-main_menu.add_choice(
-    "M", "MU/TH/UR 6000 [RESTRICTED]",
-    action    = muthur,
-    condition = lambda state: state.get("muthur_unlocked", False),
-)
-
-main_menu.add_choice(
-    "5", "CONTAINMENT PROTOCOL [ACTIVE]",
-    action    = containment_menu,
-    condition = lambda state: state.get("contamination", False),
-    sounds    = {"select": sound("horn.wav")},
-)
-
-main_menu.add_choice(
-    "X", "TRIGGER CONTAMINATION EVENT [GM]",
-    action    = CallbackAction(
-        lambda term, state: state.update({"contamination": True})
-    ),
-    condition = lambda state: not state.get("contamination", False),
-)
-
-main_menu.add_choice(
-    "U", "UNLOCK MU/TH/UR ACCESS [GM]",
-    action    = CallbackAction(
-        lambda term, state: state.update({"muthur_unlocked": True})
-    ),
-    condition = lambda state: not state.get("muthur_unlocked", False),
-)
-
-main_menu.add_choice(
-    "Q", "QUITTER",
-    action = CallbackAction(lambda term, state: (_ for _ in ()).throw(MenuExit()))
-)
 
 # ---------------------------------------------------------------------------
 # Événements d'état
 # ---------------------------------------------------------------------------
-
-main_menu.on_state(
-    "contamination",
-    value        = True,
-    sound        = sound("horn.wav"),
-    message_file = asset("contamination_alert.txt"),
-)
-
-main_menu.on_state(
-    "contamination",
-    value   = False,
-    sound   = sound("beep.wav"),
-    message = "Contamination neutralisée. Retour à la normale.",
-)
-
-main_menu.on_state(
-    "muthur_unlocked",
-    value   = True,
-    message = "Accès MU/TH/UR 6000 déverrouillé.",
-)
 
 
 # ---------------------------------------------------------------------------
@@ -227,8 +163,8 @@ boot = Boot(
     typing_sound     = Sound(sound("typing_long.wav"), volume=0.3),
     loading_sound    = Sound(sound("subtle_long_type.wav"), volume=0.3),
     final_sound      = sound("horn.wav"),
-    loading_duration = 2,
-    scroll_delay     = 0.10,
+    loading_duration = 6,
+    scroll_delay     = 0.1,
     prompt           = "               BOOT ? (Y/N) : ",
 )
 
