@@ -201,7 +201,7 @@ def main():
         loop_on_exit = True,
         debug        = args.debug,
     )
-    #campaign.boot = boot
+    campaign.boot = boot
     campaign.menu = personal_terminal
     campaign.run()
 
