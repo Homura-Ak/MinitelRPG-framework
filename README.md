@@ -23,20 +23,40 @@ Conçu pour *Alien RPG* mais utilisable pour n'importe quel TTRPG.
    - [Événements d'état](#événements-détat)
 5. [Référence complète des paramètres](#référence-complète-des-paramètres)
 6. [Providers LLM](#providers-llm)
+7. [Persistance et reset](#persistance-et-reset)
+8. [Mode debug](#mode-debug)
+9. [Démarrage automatique sur Raspberry Pi](#démarrage-automatique-sur-raspberry-pi)
 
 ---
 
 ## Installation
 
+### 1. Dépendances système
+
 ```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install pyserial openai anthropic python-dotenv requests
-# Optionnel (recommandé) pour le volume audio et formats non-wav :
+# Lecture audio (sox pour le volume, ffmpeg pour les formats non-wav)
 sudo apt install sox ffmpeg
 ```
 
-Variables d'environnement (fichier `.env` à la racine) :
+### 2. Environnement Python
+
+```bash
+# Créer le venv (à faire une seule fois)
+python3 -m venv venv
+
+# Activer le venv (à faire à chaque session)
+source venv/bin/activate
+
+# Installer les dépendances depuis le requirements.txt
+pip install -r requirements.txt
+```
+
+> **Important :** un venv ne se copie pas d'une machine à l'autre — il faut toujours le recréer sur place avec `pip install -r requirements.txt`.
+
+### 3. Variables d'environnement
+
+Créer un fichier `.env` à la racine du projet :
+
 ```
 OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
@@ -585,3 +605,70 @@ Ou dans le code :
 ```python
 campaign = Campaign(debug=True)
 ```
+
+---
+
+## Démarrage automatique sur Raspberry Pi
+
+Pour que la campagne se lance automatiquement au démarrage du Pi (sans intervention manuelle), on crée un service systemd.
+
+### 1. Créer le fichier de service
+
+```bash
+sudo nano /etc/systemd/system/minitelrpg.service
+```
+
+Contenu :
+
+```ini
+[Unit]
+Description=MinitelRPG — SEVASTOLINK
+After=network.target
+
+[Service]
+Type=simple
+User=muthur
+WorkingDirectory=/home/muthur/MinitelRPG-framework
+EnvironmentFile=/home/muthur/MinitelRPG-framework/.env
+ExecStart=/home/muthur/MinitelRPG-framework/venv/bin/python campaigns/sevastolink.py --device /dev/ttyUSB0 --baud 4800
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+> Adapter `User`, `WorkingDirectory` et `ExecStart` si votre projet est dans un autre dossier.
+
+### 2. Activer et démarrer le service
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable minitelrpg
+sudo systemctl start minitelrpg
+```
+
+### 3. Commandes utiles
+
+```bash
+# Vérifier que le service tourne
+sudo systemctl status minitelrpg
+
+# Voir les logs en direct
+journalctl -u minitelrpg -f
+
+# Redémarrer le service
+sudo systemctl restart minitelrpg
+
+# Arrêter le service
+sudo systemctl stop minitelrpg
+
+# Désactiver le démarrage automatique
+sudo systemctl disable minitelrpg
+```
+
+> `Restart=on-failure` avec `RestartSec=5` : si le script plante, il redémarre automatiquement après 5 secondes.
+
+### Note sur le Minitel
+
+Le framework détecte automatiquement si le Minitel est éteint au démarrage et attend qu'il soit allumé avant de continuer. Il n'est donc pas nécessaire que le Minitel soit allumé avant le Pi.

@@ -66,6 +66,40 @@ def tput(name, *args, termname=None):
 
 
 # ---------------------------------------------------------------------------
+# Séquences PRO2 pour l'initialisation automatique du Minitel 1B
+# Source : STUM 1B — Tableau 4 LES CODES PRO2
+# ---------------------------------------------------------------------------
+
+# Correspondance baud → séquence PRO2 "Vitesse de la prise, clavier"
+# Format : ESC 3A 6B <vitesse>
+# Ces séquences sont envoyées au Minitel pour lui demander de changer
+# sa vitesse de communication sur la prise péri-informatique (DIN).
+_PRO2_BAUD = {
+    300:  b'\x1b\x3a\x6b\x52',   # 300/300 bauds
+    1200: b'\x1b\x3a\x6b\x64',   # 1200/1200 bauds
+    4800: b'\x1b\x3a\x6b\x76',   # 4800/4800 bauds
+    9600: b'\x1b\x3a\x6b\x7f',   # 9600/9600 bauds
+}
+
+# Vitesses à tester pour trouver la vitesse courante du Minitel.
+# Le Minitel 1B peut démarrer à n'importe laquelle de ces vitesses
+# selon son dernier état (la vitesse n'est pas toujours mémorisée).
+_PROBE_BAUDS = [9600, 1200, 300, 4800]
+
+# Passage en mode téléinformatique 80 colonnes (ESC 3A 31 7D)
+# Equivalent de FNCT+T puis A sur le clavier du Minitel.
+_PRO2_TELEINFORMATIQUE = b'\x1b\x3a\x31\x7d'
+
+# Désactivation de l'écho local (ESC 3A 65 — Diffusion acquittement)
+# Equivalent de FNCT+T puis E sur le clavier du Minitel.
+_PRO2_ECHO_OFF = b'\x1b\x3a\x65'
+
+# Effacement de l'écran + curseur en (1,1) — séquences ANSI standard
+# Nécessaire pour nettoyer le caractère parasite laissé par _PRO2_ECHO_OFF.
+_ANSI_CLEAR = b'\x1b\x5b\x32\x4a\x1b\x5b\x48'
+
+
+# ---------------------------------------------------------------------------
 # Classe principale
 # ---------------------------------------------------------------------------
 
@@ -82,6 +116,13 @@ class MinitelTerminal:
                  Augmenter pour accélérer l'affichage (risque d'artefacts).
     page_gap   : pause entre les blocs en secondes (None → PAGE_GAP global)
                  Réduire à 0.005 pour accélérer, 0.02 pour ralentir.
+    auto_init  : si True (défaut), envoie automatiquement les séquences PRO2
+                 au démarrage pour configurer le Minitel 1B :
+                   - passage à la vitesse `baud`
+                   - mode téléinformatique 80 colonnes
+                   - désactivation de l'écho local
+                 Mettre à False si le Minitel est déjà configuré manuellement
+                 ou si vous utilisez un autre modèle que le 1B.
 
     Exemple
     -------
@@ -99,6 +140,7 @@ class MinitelTerminal:
         termname:   str   = None,
         page_chunk: int   = None,
         page_gap:   float = None,
+        auto_init:  bool  = True,
     ):
         self.device     = device
         self.baud       = baud
@@ -106,6 +148,7 @@ class MinitelTerminal:
         # page_chunk / page_gap surchargent les globaux si précisés
         self.page_chunk = page_chunk if page_chunk is not None else PAGE_CHUNK
         self.page_gap   = page_gap   if page_gap   is not None else PAGE_GAP
+        self.auto_init  = auto_init
         self._ser: serial.Serial | None = None
 
     # ------------------------------------------------------------------
@@ -113,9 +156,19 @@ class MinitelTerminal:
     # ------------------------------------------------------------------
 
     def open(self):
-        """Ouvre le port série (idempotent)."""
+        """
+        Ouvre le port série et initialise le Minitel 1B si auto_init=True.
+
+        L'initialisation automatique envoie les séquences PRO2 pour :
+          1. Passer à la vitesse `baud` (en testant toutes les vitesses possibles)
+          2. Activer le mode téléinformatique 80 colonnes (équivalent FNCT+T A)
+          3. Désactiver l'écho local (équivalent FNCT+T E)
+          4. Effacer l'écran
+        """
         if self._ser and self._ser.is_open:
             return
+
+        # Ouverture initiale à la vitesse cible
         self._ser = serial.Serial(
             self.device,
             baudrate = self.baud,
@@ -127,6 +180,96 @@ class MinitelTerminal:
             dsrdtr   = False,
             timeout  = 0.1,
         )
+
+        if not self.auto_init:
+            return
+
+        # --- Attente que le Minitel soit allumé et prêt ---
+        # On sonde toutes les vitesses possibles jusqu'à obtenir une réponse.
+        # Si le Minitel est éteint, on attend et on réessaie indéfiniment.
+        print("En attente du Minitel...", flush=True)
+        while not self._wait_for_minitel():
+            time.sleep(1)
+        print("Minitel détecté.", flush=True)
+
+        # --- Initialisation automatique du Minitel 1B ---
+
+        # Étape 1 : passage à la vitesse cible depuis toutes les vitesses possibles.
+        # On ne sait pas à quelle vitesse le Minitel démarre (il ne mémorise pas
+        # toujours sa dernière config), donc on envoie la séquence PRO2 sur chaque
+        # vitesse — l'une d'elles finira par être la bonne.
+        if self.baud in _PRO2_BAUD:
+            seq_baud = _PRO2_BAUD[self.baud]
+            for speed in _PROBE_BAUDS:
+                self._ser.baudrate = speed
+                self._ser.write(seq_baud)
+                self._ser.flush()
+                time.sleep(0.3)
+            # Le Minitel est maintenant à self.baud, on remet le Pi à la même vitesse
+            self._ser.baudrate = self.baud
+            time.sleep(0.1)
+
+        # Étape 2 : mode téléinformatique 80 colonnes
+        self._ser.write(_PRO2_TELEINFORMATIQUE)
+        self._ser.flush()
+        time.sleep(0.2)
+
+        # Étape 3 : désactivation de l'écho local
+        self._ser.write(_PRO2_ECHO_OFF)
+        self._ser.flush()
+        time.sleep(0.1)
+
+        # Étape 4 : effacement de l'écran (nettoie le caractère parasite
+        # laissé par la séquence d'écho en mode téléinformatique)
+        self._ser.write(_ANSI_CLEAR)
+        self._ser.flush()
+        time.sleep(0.1)
+
+    def _wait_for_minitel(self) -> bool:
+        """
+        Détecte si le Minitel est allumé et prêt.
+
+        Deux stratégies :
+          1. Minitel vient de s'allumer (mode Vidéotex) : répond à PRO1
+          2. Minitel déjà en mode téléinformatique (restart du service) :
+             ne répond pas à PRO1, on attend qu'une touche soit pressée.
+
+        Retourne True si le Minitel est détecté, False sinon.
+        """
+        _PRO1_STATUS_TERMINAL = b'\x1b\x39\x70'
+
+        # Stratégie 1 : sonde toutes les vitesses avec PRO1
+        # Fonctionne quand le Minitel vient de s'allumer en mode Vidéotex.
+        for speed in _PROBE_BAUDS:
+            try:
+                self._ser.baudrate = speed
+                self._ser.reset_input_buffer()
+                self._ser.write(_PRO1_STATUS_TERMINAL)
+                self._ser.flush()
+                start = time.monotonic()
+                while time.monotonic() - start < 0.5:
+                    b = self._ser.read(1)
+                    if b == b'\x1b':
+                        time.sleep(0.1)
+                        self._ser.reset_input_buffer()
+                        return True
+            except Exception:
+                pass
+
+        # Stratégie 2 : attend une touche pressée sur le Minitel.
+        # Utilisé quand le Minitel est déjà en mode téléinformatique
+        # (par exemple après un restart du service).
+        # Le message "En attente..." invite l'utilisateur à appuyer sur une touche.
+        self._ser.baudrate = self.baud
+        self._ser.reset_input_buffer()
+        start = time.monotonic()
+        while time.monotonic() - start < 3.0:
+            b = self._ser.read(1)
+            if b:
+                self._ser.reset_input_buffer()
+                return True
+
+        return False
 
     def close(self):
         """Ferme le port série."""
@@ -222,8 +365,22 @@ class MinitelTerminal:
         return self._seq("nel", fallback=b"\x1bE")
 
     def seq_is2(self):
-        """Initialisation partielle du terminal (reset soft)."""
+        """
+        Initialisation partielle du terminal (reset soft).
+        NOTE : sur le Minitel 1B, is2 peut réactiver l'écho local.
+        Toujours appeler echo_off() après avoir envoyé seq_is2().
+        """
         return self._seq("is2")
+
+    def echo_off(self):
+        """
+        Désactive l'écho local du Minitel (PRO2 — Diffusion acquittement).
+        À appeler après chaque seq_is2() car is2 réactive l'écho sur le 1B.
+        """
+        if self._ser and self._ser.is_open:
+            self._ser.write(_PRO2_ECHO_OFF)
+            self._ser.flush()
+            time.sleep(0.1)
 
     # ------------------------------------------------------------------
     # Raccourcis (send + séquence)
