@@ -17,9 +17,12 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from engine import (
     Campaign, Boot, Menu, TextPage, LLMTerminal, CallbackAction, MenuExit, Sound,
-    SplitMenu, AudioItem,
+    SplitMenu, AudioItem, FullscreenAlert,
 )
 
 # ---------------------------------------------------------------------------
@@ -261,11 +264,18 @@ sevastolink = SplitMenu(
     # key_enter = b'\r'
 
     # Labels du footer
-    nav_navigate = "[UP/DOWN] NAVIGATE",
-    nav_open     = "[RIGHT] OPEN",
-    nav_back     = "[LEFT]  BACK",
-    nav_play     = "[ENTER] PLAY",
-    nav_quit     = "[Q] DISCONNECT",
+    #nav_navigate = "[UP/DOWN] NAVIGATE",
+    #nav_open     = "[RIGHT] OPEN",
+    #nav_back     = "[LEFT]  BACK",
+    #nav_play     = "[ENTER] PLAY",
+    #nav_quit     = "[Q] DISCONNECT",
+    # Textes d'état en anglais
+    #nav_next_label   = "NEXT",
+    #nav_play_status  = "[ NOW PLAYING...      ]",
+    #nav_play_done    = "[ PLAYBACK COMPLETE   ]",
+    #nav_play_hint    = "[ PRESS ENTER TO PLAY ]",
+    #nav_error_file   = "[ERROR: FILE NOT FOUND]",
+    #nav_file_missing = "[FILE NOT FOUND]",
 )
 
 # Dossiers toujours visibles
@@ -302,6 +312,17 @@ sevastolink.add_item(
         sound = sound("beep.wav"),
     ),
     condition = lambda state: not state.get("muthur_unlocked", False),
+)
+
+# Événements d'état
+sevastolink.on_state(
+    "self_destruct",
+    value = True,
+    sound = Sound(sound("horn.wav"), volume=1.0),
+    alert = FullscreenAlert(
+        text        = "AUTODESTRUCTION INITIATED\n\nSEQUENCE : DELTA-7-OMEGA",
+        dismissible = True,
+    ),
 )
 
 
@@ -369,7 +390,7 @@ def main():
         debug        = args.debug,
     )
 
-    campaign.boot = boot
+    #campaign.boot = boot
     campaign.menu = sevastolink
 
     campaign.run()

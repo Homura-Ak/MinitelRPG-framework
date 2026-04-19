@@ -5,7 +5,7 @@ Exports publics du framework.
 """
 
 from .campaign import Campaign
-from .actions  import Boot, TextPage, LLMTerminal, CallbackAction
+from .actions  import Boot, TextPage, LLMTerminal, CallbackAction, FullscreenAlert
 from .menu     import Menu, Choice, MenuExit
 from .menusplit import SplitMenu, SplitItem, AudioItem
 from .state    import SessionState
@@ -18,6 +18,7 @@ __all__ = [
     "TextPage",
     "LLMTerminal",
     "CallbackAction",
+    "FullscreenAlert",
     "Menu",
     "Choice",
     "MenuExit",

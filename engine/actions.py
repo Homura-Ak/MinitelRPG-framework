@@ -686,6 +686,73 @@ class CallbackAction:
 
 
 # ---------------------------------------------------------------------------
+# FullscreenAlert
+# ---------------------------------------------------------------------------
+
+class FullscreenAlert:
+    """
+    Affiche un message en plein écran, déclenché par un watcher d'état.
+
+    Paramètres
+    ----------
+    text        : texte à afficher (multi-lignes avec \\n)
+    path        : chemin d'un fichier texte (prioritaire sur text)
+    sound       : son joué au déclenchement (str ou Sound)
+    dismissible : si True, attend une touche pour revenir (défaut True)
+                  si False, l'écran reste affiché sans retour possible
+
+    Exemple
+    -------
+        FullscreenAlert(
+            text        = "AUTODESTRUCTION INITIÉE\\n\\nSEQUENCE : DELTA-7-OMEGA",
+            sound       = Sound("assets/sounds/horn.wav", volume=1.0),
+            dismissible = False,
+        )
+    """
+
+    def __init__(
+        self,
+        text:        str  = None,
+        path:        str  = None,
+        sound             = None,
+        dismissible: bool = True,
+    ):
+        self.text        = text
+        self.path        = path
+        self.sound       = sound
+        self.dismissible = dismissible
+
+    def fire(self, term: MinitelTerminal, state: "SessionState"):
+        """Déclenche l'alerte plein écran."""
+        if self.sound:
+            play_once(self.sound)
+
+        term.clear()
+
+        if self.path and os.path.isfile(self.path):
+            lines = _read_lines(self.path)
+        elif self.text:
+            lines = self.text.splitlines()
+        else:
+            lines = ["[ALERTE]"]
+
+        top    = 1
+        bottom = LINES - 1 if self.dismissible else LINES
+        window = bottom - top + 1
+
+        term.send(term.seq_cup(top, 1))
+        for ln in lines[:window]:
+            ln = MinitelTerminal.safe_line(ln)
+            term.send(ln[:COLS])
+            term.send(term.seq_nel())
+            time.sleep(0.03)
+
+        if self.dismissible:
+            term.at(LINES, 1, "[Appuyez ENTREE pour continuer]")
+            term.wait_enter()
+
+
+# ---------------------------------------------------------------------------
 # Null context manager (pour les sons optionnels)
 # ---------------------------------------------------------------------------
 

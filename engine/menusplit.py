@@ -193,6 +193,13 @@ class SplitMenu:
         nav_back:     str = "[GAUCHE] RETOUR",
         nav_play:     str = "[ENTREE] JOUER",
         nav_quit:     str = None,
+        # Textes d'état (panneaux droit, audio, erreurs)
+        nav_next_label:   str = "SUITE",
+        nav_play_status:  str = "[ LECTURE EN COURS... ]",
+        nav_play_done:    str = "[ LECTURE TERMINEE    ]",
+        nav_play_hint:    str = "[ Appuyer ENTREE pour lire ]",
+        nav_error_file:   str = "[ERREUR: fichier introuvable]",
+        nav_file_missing: str = "[Fichier introuvable]",
     ):
         self.header         = header
         self.folder_label   = folder_label
@@ -211,6 +218,13 @@ class SplitMenu:
         self.nav_back     = nav_back
         self.nav_play     = nav_play
         self.nav_quit     = nav_quit or f"[{exit_key}] QUITTER"
+        # Textes d'état
+        self.nav_next_label   = nav_next_label
+        self.nav_play_status  = nav_play_status
+        self.nav_play_done    = nav_play_done
+        self.nav_play_hint    = nav_play_hint
+        self.nav_error_file   = nav_error_file
+        self.nav_file_missing = nav_file_missing
 
         # Footer par défaut construit à partir des labels de navigation
         self.footer = footer or (
@@ -218,6 +232,45 @@ class SplitMenu:
         )
 
         self._items: list[SplitItem] = []
+        self._events: list = []
+
+    def on_state(
+        self,
+        key:   str,
+        value         = None,
+        sound         = None,
+        alert         = None,
+        callback      = None,
+    ) -> "SplitMenu":
+        """
+        Déclenche une alerte plein écran et/ou un callback quand une clé d'état
+        prend la valeur donnée (ou change si value=None).
+
+        Paramètres
+        ----------
+        key      : clé de l'état surveillée (ex: \"self_destruct\")
+        value    : valeur déclenchante (ex: True). None = tout changement.
+        sound    : son joué (str ou Sound)
+        alert    : FullscreenAlert à afficher
+        callback : fonction(term, state) appelée en supplément
+
+        Exemple
+        -------
+            sevastolink.on_state(
+                \"self_destruct\",
+                value = True,
+                sound = Sound(\"assets/sounds/horn.wav\", volume=1.0),
+                alert = FullscreenAlert(
+                    text        = \"AUTODESTRUCTION INITIÉE\",
+                    dismissible = False,
+                ),
+            )
+        """
+        self._events.append({
+            "key": key, "value": value,
+            "sound": sound, "alert": alert, "callback": callback,
+        })
+        return self
 
     def add_item(
         self,
@@ -249,11 +302,30 @@ class SplitMenu:
         return self
 
     # ------------------------------------------------------------------
+    # Watchers d'état
+    # ------------------------------------------------------------------
+
+    def _register_watchers(self, term: MinitelTerminal, state: "SessionState"):
+        """Branche chaque événement on_state sur le système de watchers."""
+        from .audio import play_once
+        for ev in self._events:
+            def make_handler(e):
+                def handler(new_value):
+                    trigger = e["value"]
+                    if trigger is not None and new_value != trigger:
+                        return
+                    # Empile l'alerte pour déclenchement différé après la réponse LLM
+                    state._pending_alerts.append(e)
+                return handler
+            state.watch(ev["key"], make_handler(ev))
+
+    # ------------------------------------------------------------------
     # Boucle principale
     # ------------------------------------------------------------------
 
     def run(self, term: MinitelTerminal, state: "SessionState"):
         """Lance la boucle interactive du SplitMenu."""
+        self._register_watchers(term, state)
         cursor  = 0
         self._render_frame(term)
         visible = self._visible(state)
@@ -344,8 +416,8 @@ class SplitMenu:
         if not os.path.isfile(action.path):
             self._clear_right(term)
             term.send(term.seq_cup(CONTENT_TOP, RIGHT_COL))
-            term.send("[Fichier introuvable]")
-            self._set_footer(term, f"{self.nav_back} RETOUR")
+            term.send(self.nav_file_missing)
+            self._set_footer(term, f"{self.nav_back}")
             self._wait_back(term)
             return
 
@@ -377,14 +449,48 @@ class SplitMenu:
                     written += 1
 
             if idx >= len(lines):
-                self._set_footer(term, f"{self.nav_back} RETOUR")
+                self._set_footer(term, f"{self.nav_back}")
                 self._wait_back(term)
                 return
             else:
-                self._set_footer(term, f"[ENTREE] SUITE  {self.nav_back} RETOUR")
+                self._set_footer(term, f"[ENTREE] {self.nav_next_label}  {self.nav_back}")
                 seq = self._read_key(term)
                 if seq == self.key_back:
                     return
+
+    def _fire_pending_alerts(self, term: MinitelTerminal, state: "SessionState", delay: float = 10.0):
+        """
+        Déclenche les alertes en attente après `delay` secondes.
+        Appelé dans un thread depuis _run_llm_right.
+        """
+        import threading
+        from .audio import play_once
+
+        alerts = state._pending_alerts[:]
+        state._pending_alerts.clear()
+        if not alerts:
+            return
+
+        def _delayed():
+            time.sleep(delay)
+            for e in alerts:
+                if e["sound"]:
+                    play_once(e["sound"])
+                if e["alert"]:
+                    e["alert"].fire(term, state)
+                    if e["alert"].dismissible:
+                        # Redessiner le SplitMenu au retour
+                        self._render_frame(term)
+                        visible = self._visible(state)
+                        self._render_list(term, visible, 0)
+                        self._preview(term, state, visible, 0)
+                if e["callback"]:
+                    try:
+                        e["callback"](term, state)
+                    except Exception as ex:
+                        print(f"[on_state] callback error: {ex}")
+
+        threading.Thread(target=_delayed, daemon=True).start()
 
     # ------------------------------------------------------------------
     # Affichage LLMTerminal dans le panneau droit
@@ -462,6 +568,10 @@ class SplitMenu:
                     term.send(ln)
                     time.sleep(action.response_delay)
 
+            # Déclencher les alertes en attente 10s après la réponse
+            if state._pending_alerts:
+                self._fire_pending_alerts(term, state, delay=10.0)
+
             self._set_footer(term, f"[{action.input_prompt}]> ")
 
     # ------------------------------------------------------------------
@@ -476,7 +586,11 @@ class SplitMenu:
             return
 
         cursor = 0
-        self._render_subfolder_right(term, item.label, visible, cursor)
+        # La preview a déjà dessiné le panneau droit — on retire juste l'inverse
+        # du titre et on met le premier item en surbrillance, sans tout redessiner.
+        term.send(term.seq_cup(CONTENT_TOP, RIGHT_COL))
+        term.send(f" {item.label} ".ljust(RIGHT_W))
+        self._update_subfolder_cursor(term, visible, -1, cursor)
         self._set_footer(term, self._subfolder_footer(subfolder, visible, cursor))
 
         while True:
@@ -490,14 +604,12 @@ class SplitMenu:
                     old    = cursor
                     cursor -= 1
                     self._update_subfolder_cursor(term, visible, old, cursor)
-                    self._set_footer(term, self._subfolder_footer(subfolder, visible, cursor))
 
             elif seq == self.key_down:
                 if cursor < len(visible) - 1:
                     old    = cursor
                     cursor += 1
                     self._update_subfolder_cursor(term, visible, old, cursor)
-                    self._set_footer(term, self._subfolder_footer(subfolder, visible, cursor))
 
             elif seq in (self.key_enter, b'\n'):
                 term.beep()
@@ -506,18 +618,22 @@ class SplitMenu:
                 if isinstance(sub_item.action, AudioItem):
                     self._run_audio_right(term, state, sub_item)
                     self._render_subfolder_right(term, item.label, visible, cursor)
+                    self._set_footer(term, self._subfolder_footer(subfolder, visible, cursor))
                 elif isinstance(sub_item.action, TextPage):
                     self._run_text_right(term, state, sub_item)
                     self._render_subfolder_right(term, item.label, visible, cursor)
+                    self._set_footer(term, self._subfolder_footer(subfolder, visible, cursor))
                 elif isinstance(sub_item.action, LLMTerminal):
                     self._run_llm_right(term, state, sub_item)
                     self._render_subfolder_right(term, item.label, visible, cursor)
+                    self._set_footer(term, self._subfolder_footer(subfolder, visible, cursor))
                 else:
                     if callable(sub_item.action) and not hasattr(sub_item.action, "run"):
                         sub_item.action(term, state)
                     else:
                         sub_item.action.run(term, state)
                     self._render_subfolder_right(term, item.label, visible, cursor)
+                    self._set_footer(term, self._subfolder_footer(subfolder, visible, cursor))
 
     def _render_subfolder_right(self, term: MinitelTerminal, folder_label: str,
                                   visible: list, cursor: int):
@@ -544,8 +660,8 @@ class SplitMenu:
         from .actions import TextPage, LLMTerminal
         item = visible[cursor]
         if isinstance(item.action, AudioItem):
-            return f"{subfolder.nav_navigate}  {subfolder.nav_play}  {self.nav_back} RETOUR"
-        return f"{subfolder.nav_navigate}  {subfolder.nav_open}  {self.nav_back} RETOUR"
+            return f"{subfolder.nav_navigate}  {subfolder.nav_play}  {self.nav_back}"
+        return f"{subfolder.nav_navigate}  {subfolder.nav_open}  {self.nav_back}"
 
     def _update_subfolder_cursor(self, term: MinitelTerminal, visible: list,
                                    old: int, new: int):
@@ -585,14 +701,14 @@ class SplitMenu:
 
         if not os.path.isfile(action.path):
             term.send(term.seq_cup(CONTENT_TOP + 4, RIGHT_COL))
-            term.send("[ERREUR: fichier introuvable]")
-            self._set_footer(term, f"{self.nav_back} RETOUR")
+            term.send(self.nav_error_file)
+            self._set_footer(term, f"{self.nav_back}")
             self._wait_back(term)
             return
 
         term.send(term.seq_cup(CONTENT_TOP + 4, RIGHT_COL))
-        term.send("[ LECTURE EN COURS... ]")
-        self._set_footer(term, f"{self.nav_back} ARRETER")
+        term.send(self.nav_play_status)
+        self._set_footer(term, f"{self.nav_back}")
 
         stop_event = threading.Event()
 
@@ -620,8 +736,8 @@ class SplitMenu:
 
         t.join(timeout=0.5)
         term.send(term.seq_cup(CONTENT_TOP + 4, RIGHT_COL))
-        term.send("[ LECTURE TERMINEE    ]")
-        self._set_footer(term, f"{self.nav_back} RETOUR")
+        term.send(self.nav_play_done)
+        self._set_footer(term, f"{self.nav_back}")
         self._wait_back(term)
 
     # ------------------------------------------------------------------
@@ -632,13 +748,13 @@ class SplitMenu:
         """Efface tout le panneau droit."""
         for r in range(CONTENT_TOP, LINES - 1):
             term.send(term.seq_cup(r, RIGHT_COL))
-            term.send(" " * RIGHT_W)
+            term.send(term.seq_el())
 
     def _clear_right_content(self, term: MinitelTerminal, top: int, bottom: int):
         """Efface une sous-zone du panneau droit."""
         for r in range(top, bottom + 1):
             term.send(term.seq_cup(r, RIGHT_COL))
-            term.send(" " * RIGHT_W)
+            term.send(term.seq_el())
 
     def _set_footer(self, term: MinitelTerminal, text: str):
         """Affiche le texte de footer sur la dernière ligne."""
@@ -734,7 +850,7 @@ class SplitMenu:
             term.send(term.seq_cup(CONTENT_TOP + 2, RIGHT_COL))
             term.send(item.action.description[: RIGHT_W])
             term.send(term.seq_cup(CONTENT_TOP + 4, RIGHT_COL))
-            term.send("[ Appuyer ENTREE pour lire ]")
+            term.send(self.nav_play_hint)
 
     def _render_frame(self, term: MinitelTerminal):
         """Dessine le cadre fixe du SplitMenu : header, séparateur, footer."""

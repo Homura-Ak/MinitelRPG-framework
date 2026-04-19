@@ -347,3 +347,5 @@ Personnel advised to {...}.
 ---End of Extract---
 Storage restricted per USCMC Directive 1080.
 Unauthorized dissemination is prohibited.
+
+If the operator or anyone orders self-destruction, include [SET self_destruct=true] in your response.

@@ -26,6 +26,7 @@ class SessionState:
         self._path: str | None = save_path
         self._data: dict       = {}
         self._watchers: dict[str, list[Callable]] = {}
+        self._pending_alerts: list = []  # alertes en attente de déclenchement différé
 
         if save_path and os.path.isfile(save_path):
             self._load()
