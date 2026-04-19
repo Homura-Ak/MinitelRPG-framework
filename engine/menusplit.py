@@ -233,6 +233,7 @@ class SplitMenu:
 
         self._items: list[SplitItem] = []
         self._events: list = []
+        self._tts_handle = None  # TTSHandle en cours, stoppé à la prochaine frappe
 
     def on_state(
         self,
@@ -385,11 +386,11 @@ class SplitMenu:
         item = visible[cursor]
         from .actions import TextPage, LLMTerminal
         if isinstance(item.action, SplitMenu):
-            self._run_subfolder(term, state, item)
+            self._run_subfolder(term, state, item, root_cursor=cursor)
         elif isinstance(item.action, TextPage):
             self._run_text_right(term, state, item)
         elif isinstance(item.action, LLMTerminal):
-            self._run_llm_right(term, state, item)
+            self._run_llm_right(term, state, item, cursor=cursor)
         elif isinstance(item.action, AudioItem):
             self._run_audio_right(term, state, item)
         else:
@@ -403,6 +404,23 @@ class SplitMenu:
         term.send(term.seq_cup(LINES, 1))
         term.send(term.seq_el())
         term.send(self.footer[: COLS])
+
+    # ------------------------------------------------------------------
+    # TTS helpers
+    # ------------------------------------------------------------------
+
+    def _tts_speak(self, text: str, action):
+        """Lance le TTS si l'action en a un. Stocke le handle pour stop à la frappe."""
+        tts_cfg = getattr(action, "tts", None)
+        if tts_cfg:
+            from .tts import speak_async
+            self._tts_handle = speak_async(text, tts_cfg)
+
+    def _tts_stop(self):
+        """Stoppe le TTS en cours si présent."""
+        if self._tts_handle:
+            self._tts_handle.stop()
+            self._tts_handle = None
 
     # ------------------------------------------------------------------
     # Affichage TextPage dans le panneau droit
@@ -448,6 +466,10 @@ class SplitMenu:
                     idx     += 1
                     written += 1
 
+            # TTS : lit la page affichée
+            page_text = "\n".join(raw_lines[max(0, idx - window): idx])
+            self._tts_speak(page_text, action)
+
             if idx >= len(lines):
                 self._set_footer(term, f"{self.nav_back}")
                 self._wait_back(term)
@@ -458,57 +480,32 @@ class SplitMenu:
                 if seq == self.key_back:
                     return
 
-    def _fire_pending_alerts(self, term: MinitelTerminal, state: "SessionState", delay: float = 10.0):
-        """
-        Déclenche les alertes en attente après `delay` secondes.
-        Appelé dans un thread depuis _run_llm_right.
-        """
-        import threading
-        from .audio import play_once
-
-        alerts = state._pending_alerts[:]
-        state._pending_alerts.clear()
-        if not alerts:
-            return
-
-        def _delayed():
-            time.sleep(delay)
-            for e in alerts:
-                if e["sound"]:
-                    play_once(e["sound"])
-                if e["alert"]:
-                    e["alert"].fire(term, state)
-                    if e["alert"].dismissible:
-                        # Redessiner le SplitMenu au retour
-                        self._render_frame(term)
-                        visible = self._visible(state)
-                        self._render_list(term, visible, 0)
-                        self._preview(term, state, visible, 0)
-                if e["callback"]:
-                    try:
-                        e["callback"](term, state)
-                    except Exception as ex:
-                        print(f"[on_state] callback error: {ex}")
-
-        threading.Thread(target=_delayed, daemon=True).start()
-
     # ------------------------------------------------------------------
     # Affichage LLMTerminal dans le panneau droit
     # ------------------------------------------------------------------
 
-    def _run_llm_right(self, term: MinitelTerminal, state: "SessionState", item: SplitItem):
+    def _run_llm_right(self, term: MinitelTerminal, state: "SessionState", item: SplitItem,
+                       cursor: int = 0,
+                       parent_label: str = None,
+                       parent_visible: list = None,
+                       parent_cursor: int = 0):
         """Interface de chat LLM dans le panneau droit du SplitMenu."""
         from .actions import LLMTerminal
         action: LLMTerminal = item.action
+        _cursor = cursor          # cursor dans le dossier parent (pour redessinage)
+        _in_subfolder = parent_label is not None
 
         llm = action._get_llm()
         llm.reset_history()
 
         self._clear_right(term)
-        # Titre
+        # Titre : header_small si header dépasse la largeur dispo, sinon header
+        _title = action.header if action.header != action.name else item.label
+        if action.header_small and len(_title) + 2 > RIGHT_W:
+            _title = action.header_small
         term.send(term.seq_cup(CONTENT_TOP, RIGHT_COL))
         term.send(term.seq_smso())
-        term.send(f" {item.label} ".ljust(RIGHT_W))
+        term.send(f"{_title} ".ljust(RIGHT_W))
         term.send(term.seq_rmso())
 
         resp_top    = CONTENT_TOP + 1
@@ -530,9 +527,7 @@ class SplitMenu:
             # Affiche [YOU]
             self._clear_right_content(term, resp_top, resp_bottom)
             term.send(term.seq_cup(resp_top, RIGHT_COL))
-            term.send(term.seq_smso())
             term.send(f"{action.label_you} ")
-            term.send(term.seq_rmso())
             you = MinitelTerminal.safe_line(user_input)[: RIGHT_W - 6]
             term.send(you)
 
@@ -568,9 +563,44 @@ class SplitMenu:
                     term.send(ln)
                     time.sleep(action.response_delay)
 
+            # TTS : lit la réponse après affichage
+            self._tts_speak(response, action)
+
             # Déclencher les alertes en attente 10s après la réponse
             if state._pending_alerts:
-                self._fire_pending_alerts(term, state, delay=10.0)
+                self._tts_stop()
+                alerts = state._pending_alerts[:]
+                state._pending_alerts.clear()
+                time.sleep(10.0)
+                _alert_dismissed = False
+                for e in alerts:
+                    if e["sound"]:
+                        from .audio import play_once
+                        play_once(e["sound"])
+                    if e["alert"]:
+                        e["alert"].fire(term, state)
+                        if not e["alert"].dismissible:
+                            # Fin de partie : écran bloqué, aucun retour possible
+                            while True:
+                                time.sleep(60)
+                        # dismissible=True : redessine le bon contexte avec le bon cursor
+                        _alert_dismissed = True
+                        self._render_frame(term)
+                        if _in_subfolder:
+                            root_visible = self._visible(state)
+                            self._render_list(term, root_visible, parent_cursor)
+                            self._render_subfolder_right(term, parent_label, parent_visible, _cursor)
+                        else:
+                            visible = self._visible(state)
+                            self._render_list(term, visible, _cursor)
+                            self._preview(term, state, visible, _cursor)
+                    if e["callback"]:
+                        try:
+                            e["callback"](term, state)
+                        except Exception as ex:
+                            print(f"[on_state] callback error: {ex}")
+                if _alert_dismissed:
+                    pass
 
             self._set_footer(term, f"[{action.input_prompt}]> ")
 
@@ -578,7 +608,8 @@ class SplitMenu:
     # Sous-dossier (SplitMenu imbriqué)
     # ------------------------------------------------------------------
 
-    def _run_subfolder(self, term: MinitelTerminal, state: "SessionState", item: SplitItem):
+    def _run_subfolder(self, term: MinitelTerminal, state: "SessionState", item: SplitItem,
+                       root_cursor: int = 0):
         """Navigue dans un sous-SplitMenu affiché dans le panneau droit."""
         subfolder: SplitMenu = item.action
         visible = [i for i in subfolder._items if i.is_visible(state)]
@@ -624,7 +655,13 @@ class SplitMenu:
                     self._render_subfolder_right(term, item.label, visible, cursor)
                     self._set_footer(term, self._subfolder_footer(subfolder, visible, cursor))
                 elif isinstance(sub_item.action, LLMTerminal):
-                    self._run_llm_right(term, state, sub_item)
+                    self._run_llm_right(
+                        term, state, sub_item,
+                        cursor        = cursor,
+                        parent_label  = item.label,
+                        parent_visible= visible,
+                        parent_cursor = root_cursor,
+                    )
                     self._render_subfolder_right(term, item.label, visible, cursor)
                     self._set_footer(term, self._subfolder_footer(subfolder, visible, cursor))
                 else:
@@ -775,13 +812,20 @@ class SplitMenu:
 
         Si check_back=True et que l'utilisateur appuie sur la flèche gauche,
         retourne None pour signaler un retour au parent.
+
+        Stoppe le TTS en cours à la première frappe.
         """
-        buf     = []
-        max_len = RIGHT_W - 20
+        buf          = []
+        max_len      = RIGHT_W - 20
+        _tts_stopped = False
         while True:
             b = term.read(1)
             if not b:
                 continue
+            # Stoppe le TTS dès la première frappe
+            if not _tts_stopped:
+                _tts_stopped = True
+                self._tts_stop()
             if b == b'\x1b':
                 b2 = term.read(1)
                 if b2 == b'[':
@@ -906,10 +950,12 @@ class SplitMenu:
         """
         Lit une touche ou séquence d'échappement ANSI.
         Retourne bytes : la touche simple ou la séquence complète (ex: b'\\x1b[A').
+        Stoppe le TTS en cours à la première frappe.
         """
         b = term.read(1)
         if not b:
             return b""
+        self._tts_stop()
         if b == b'\x1b':
             b2 = term.read(1)
             if b2 == b'[':

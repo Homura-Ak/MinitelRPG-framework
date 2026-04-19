@@ -22,7 +22,7 @@ load_dotenv()
 
 from engine import (
     Campaign, Boot, Menu, TextPage, LLMTerminal, CallbackAction, MenuExit, Sound,
-    SplitMenu, AudioItem, FullscreenAlert,
+    SplitMenu, AudioItem, FullscreenAlert, TTSConfig,
 )
 
 # ---------------------------------------------------------------------------
@@ -46,10 +46,17 @@ def sound(name: str) -> str:
 # ---------------------------------------------------------------------------
 # A.P.O.L.L.O — IA principale de Fort Nebraska (SEEGSON)
 # ---------------------------------------------------------------------------
+
+tts = TTSConfig(
+    voice       = "onyx",
+    alsa_device = "plughw:1,0",
+)
+
 apollo = LLMTerminal(
     # Identite
     name         = "APOLLO",
-    header       = "A.P.O.L.L.O  //  SEEGSON CENTRAL ARTIFICIAL INTELLIGENCE",
+    header       = "#  -  A.P.O.L.L.O                          CENTRAL ARTIFICIAL INTELLIGENCE",
+    header_small = "A.P.O.L.L.O  //  SEEGSON CENTRAL ARTIFICIAL INTELLIGENCE",
     input_prompt = "ENTER QUERY",
 
     # Prompt systeme (contient tout le lore de Fort Nebraska)
@@ -58,6 +65,7 @@ apollo = LLMTerminal(
     # Provider LLM
     provider = "openai",
     model    = "gpt-5-mini",
+    tts = tts,
 
     # Sons
     sounds = {
@@ -321,7 +329,7 @@ sevastolink.on_state(
     sound = Sound(sound("horn.wav"), volume=1.0),
     alert = FullscreenAlert(
         text        = "AUTODESTRUCTION INITIATED\n\nSEQUENCE : DELTA-7-OMEGA",
-        dismissible = True,
+        dismissible = False,
     ),
 )
 

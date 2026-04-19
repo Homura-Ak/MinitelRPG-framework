@@ -289,6 +289,7 @@ class TextPage:
         header:       str   = None,
         footer_next:  str   = "[SUITE. Appuyez ENTREE pour continuer]",
         footer_end:   str   = "[FIN. Appuyez ENTREE pour revenir]",
+        tts                = None,
     ):
         self.path         = path
         self.typing_sound = typing_sound
@@ -296,6 +297,7 @@ class TextPage:
         self.header       = header or os.path.basename(path)
         self.footer_next  = footer_next
         self.footer_end   = footer_end
+        self.tts          = tts
 
     def run(self, term: MinitelTerminal, state: "SessionState"):
         """Affiche le fichier paginé. Retourne au menu parent à la fin."""
@@ -419,6 +421,7 @@ class LLMTerminal:
         self,
         name:              str,
         header:            str   = None,
+        header_small:      str   = None,
         prompt:            str   = None,
         prompt_file:       str   = None,
         provider:          str   = "openai",
@@ -440,12 +443,15 @@ class LLMTerminal:
         label_thinking:    str   = "THINKING...",
         error_prefix:      str   = "[SYSTEM ERROR]",
         footer_exit:       str   = None,
+        tts                      = None,
     ):
         self.name              = name
         self.header            = header or name
+        self.header_small      = header_small
         self.exit_command      = exit_command
         self.sounds            = sounds or {}
         self.response_delay    = response_delay
+        self.tts               = tts
         # Boot
         self.boot_prompt       = boot_prompt
         self.boot_confirm      = boot_confirm.upper()

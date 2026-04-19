@@ -11,6 +11,7 @@ from .menusplit import SplitMenu, SplitItem, AudioItem
 from .state    import SessionState
 from .terminal import MinitelTerminal, DebugTerminal
 from .audio    import play_once, play_async, LoopPlayer, Sound
+from .tts      import TTSConfig
 
 __all__ = [
     "Campaign",
@@ -31,4 +32,5 @@ __all__ = [
     "play_async",
     "LoopPlayer",
     "Sound",
+    "TTSConfig",
 ]
