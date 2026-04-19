@@ -113,6 +113,10 @@ class OpenAIProvider(LLMProvider):
         if state_changes:
             state.update(state_changes)
 
+        # Eviter les réponses vides
+        if not text.strip():
+            text = "..."
+
         self.history.append({"role": "assistant", "content": text})
         return text
 
@@ -214,6 +218,10 @@ class AnthropicProvider(LLMProvider):
         elif hasattr(usage, "cache_creation_input_tokens") and usage.cache_creation_input_tokens:
             print(f"[cache] write: {usage.cache_creation_input_tokens} tokens écrits en cache")
 
+        # Eviter les réponses vides
+        if not text.strip():
+            text = "..."
+
         return text
 
 
@@ -264,6 +272,10 @@ class OllamaProvider(LLMProvider):
 
         # Parse [SET] commands
         text = state.apply_llm_commands(text)
+
+        # Eviter les réponses vides
+        if not text.strip():
+            text = "..."
 
         self.history.append({"role": "assistant", "content": text})
         return text

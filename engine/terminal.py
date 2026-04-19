@@ -523,11 +523,32 @@ class MinitelTerminal:
     # ------------------------------------------------------------------
 
     # Caractères Unicode fréquents non supportés en latin-1 → substituts ASCII
+    # + translittération des accents pour la liaison série 7 bits du Minitel
+    # NOTE : cette table est utilisée par safe_line() qui prépare le texte
+    # destiné à l'affichage Minitel. Le TTS reçoit toujours le texte original
+    # (avec accents) AVANT tout passage par safe_line().
     TRANS = str.maketrans({
+        # Guillemets et ponctuations typographiques
         "\u2018": "'", "\u2019": "'",
         "\u201c": '"', "\u201d": '"',
         "\u2013": "-", "\u2014": "-",
         "\u2026": "...", "\u00a0": " ",
+        # Minuscules accentuées → ASCII
+        "à": "a", "â": "a", "ä": "a",
+        "é": "e", "è": "e", "ê": "e", "ë": "e",
+        "î": "i", "ï": "i",
+        "ô": "o", "ö": "o",
+        "ù": "u", "û": "u", "ü": "u",
+        "ç": "c",
+        "œ": "oe", "æ": "ae",
+        # Majuscules accentuées → ASCII
+        "À": "A", "Â": "A", "Ä": "A",
+        "É": "E", "È": "E", "Ê": "E", "Ë": "E",
+        "Î": "I", "Ï": "I",
+        "Ô": "O", "Ö": "O",
+        "Ù": "U", "Û": "U", "Ü": "U",
+        "Ç": "C",
+        "Œ": "OE", "Æ": "AE",
     })
 
     @staticmethod

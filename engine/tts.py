@@ -63,9 +63,9 @@ def _build_play_cmd(path: str, alsa_device: str, robotic: bool) -> list:
         cmd = ["play", "-q", path]
         if robotic:
             cmd += [
-                "pitch", "-80",
+                "pitch", "-20",
                 "echo", "0.8", "0.9", "30", "0.3",
-                "overdrive", "20",
+                "overdrive", "10",
             ]
         return cmd
 
@@ -108,14 +108,16 @@ class TTSConfig:
         api_key:      str   = None,
         voice:        str   = "alloy",
         model:        str   = "gpt-4o-mini-tts",
-        speed:        float = 1,
+        speed:        float = 0.9,
         alsa_device:  str   = "plughw:1,0",
         robotic:      bool  = True,
         enabled:      bool  = True,
         instructions: str   = (
-            "Parle en une froide, robotique, synthetique voix d'ordinateur. "
-            "Monotone, pas d'émotions, comme l'ordinateur de bord IA MUTHUR d'alien."
-            "Prononce les mots Francais correctement. Paie attention aux accents comme 'ç' dans 'reçu'."
+            "Speak as a damaged station computer."
+            "Cold, synthetic, robotic French voice. Monotone, no emotions."
+            "Speak slowly and deliberately. Pause naturally on ellipses (...) and dashes (-)."
+            "Emphasize corrupted or critical data with a slightly slower delivery."
+            "Pronounce French correctly including accented characters. Never sound human."
         ),
     ):
         self.api_key      = api_key or os.environ.get("OPENAI_API_KEY", "")
